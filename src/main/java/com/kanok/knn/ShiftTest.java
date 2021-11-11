@@ -4,7 +4,10 @@ import com.github.jelmerk.knn.DistanceFunctions;
 import com.github.jelmerk.knn.SearchResult;
 import com.github.jelmerk.knn.hnsw.HnswIndex;
 
-import java.io.*;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.channels.FileChannel;
@@ -13,25 +16,11 @@ import java.util.List;
 
 public class ShiftTest {
 
-    public void recall() throws IOException {
-        File file = new File("c:/All/VSB/2rocnik/AVD/sift1M/knnQA1M.bin");
-        FileInputStream fin = new FileInputStream(file);
-        BufferedInputStream bin = new BufferedInputStream(fin);
-        DataInputStream din = new DataInputStream(bin);
-
-        int count = (int) (file.length() / 4);
-        int[] values = new int[count];
-        for (int i = 0; i < count; i++) {
-            System.out.println(din.readInt());
-        }
-        System.out.println(values[0]);
-    }
-
-    public void test() throws InterruptedException {
+    public void test() throws InterruptedException, IOException {
         //vectors count
-        int nodeCount = 1000000;
+        int nodeCount = 1_000_000;
         //query count
-        int qSize = 10000;
+        int qSize = 1_000;
         //vector dimension
         int vecDim = 128;
         //number of nearest neighbors to find
@@ -39,9 +28,9 @@ public class ShiftTest {
 
         HnswIndex<Integer, float[], Node, Float> hnswIndex = HnswIndex
                 .newBuilder(vecDim, DistanceFunctions.FLOAT_EUCLIDEAN_DISTANCE, nodeCount)
-                .withM(48)
-                .withEf(500)
-                .withEfConstruction(500)
+                .withM(36)
+                .withEf(150)
+                .withEfConstruction(150)
                 .build();
 
         /////////////////////////////////////////////////////// READ DATA
@@ -58,25 +47,39 @@ public class ShiftTest {
         long buildTimeS = (end - start) / 1000;
         System.out.println("End building graph. Total build creating time: " + buildTimeS + " s");
 
-        int count = 0;
+
+        ObjectInputStream in = new ObjectInputStream(new FileInputStream("c:/All/VSB/2rocnik/AVD/sift1M/QA.bin"));
+
         System.out.println("Start querying");
         start = System.currentTimeMillis();
+        float recall = 0;
         for (int i = 0; i < qSize; i++) {
             float[] massQArray = new float[128];
             massQ.get(massQArray, 0, vecDim);
             List<SearchResult<Node, Float>> nearest = hnswIndex.findNearest(massQArray, k);
 
+            List<Integer> ni = new ArrayList<>();
             for (SearchResult<Node, Float> nodeFloatSearchResult : nearest) {
-                System.out.println("Q number " + count + " AND ID: " + nodeFloatSearchResult.item().id());
+                ni.add(nodeFloatSearchResult.item().id());
             }
-            count++;
+
+            List<Integer> nr = new ArrayList<>();
+            for (int j = 0; j < 10; j++) {
+                nr.add(in.readInt());
+            }
+
+            ni.retainAll(nr);
+            recall += ni.size();
+
         }
+        System.out.println("Recall: " + recall / (qSize * k));
+
         end = System.currentTimeMillis();
         long totalMsQ = end - start;
-        System.out.println("End querying. Q/s "+ qSize / (totalMsQ / 1000));
         System.out.println("Total ms " + totalMsQ);
-        System.out.println();
         System.out.println("Total graph build time: " + buildTimeS + " s");
+
+        in.close();
     }
 
     private List<Node> createNodes(FloatBuffer floatBuffer, int nodeCount, int vecDim) {
@@ -101,6 +104,4 @@ public class ShiftTest {
         }
         return mass;
     }
-
-
 }
